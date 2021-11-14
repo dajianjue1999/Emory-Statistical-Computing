@@ -1,0 +1,55 @@
+---
+title: "QTM 151 hw3"
+author: "Daoyang E"
+date: "2020/2/23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(babynames)
+library(nycflights13)
+library(tidyverse)
+```
+
+
+0.1
+(a)
+```{r}
+(numbaby <- babynames %>% group_by(year,sex) %>% summarise(total = sum(n)))
+```
+
+```{r}
+ggplot(numbaby, aes(x = year, y = total,col = sex))+
+  geom_line()
+```
+
+```{r}
+(newname <- babynames %>% group_by(name,sex) %>% summarise (total = sum(n)) %>% ungroup()%>% top_n(5))
+```
+
+(b)
+```{r}
+ggplot(newname, aes(x= name, y = total))+
+  geom_col(aes(fill = sex))
+```
+
+2.
+(a)
+```{r}
+?flights
+```
+
+(b)
+```{r}
+(newflight <- flights %>% group_by(dest) %>% summarise(totalflights = sum(flight), averagedistance = mean(distance, na.rm = T), averagedelay = mean(arr_delay, na.rm = T)) %>% filter( dest != "HNL", totalflights >= 20))
+```
+
+(c)
+```{r}
+ggplot(newflight,  aes(x = averagedistance, y = averagedelay))+
+  geom_point(aes(size = totalflights), alpha = I(0.5))+
+  geom_smooth(method = "lm", se = F)
+```
+
+The information I get is that the longer distance one flight is, the less delay in its arrival time it would have.

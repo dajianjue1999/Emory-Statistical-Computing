@@ -1,0 +1,43 @@
+---
+title: "HW6"
+author: Daoyang E
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lubridate)
+library(nycflights13)
+library(ggplot2)
+library(tidyverse)
+```
+
+## 1. Provide a plot to visualize the distribution of flights arriving delay by the departure time by minute within the hour. Explain the trend of flights delay.
+
+```{r}
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights %>% 
+  filter(!is.na(dep_time), !is.na(arr_time)) %>% 
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time),
+  ) %>% 
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+```
+
+```{r}
+flights_DT<-flights_dt%>%mutate(dep_min = minute(dep_time))%>%group_by(dep_min)%>%summarize(avg_arr_delay = mean(arr_delay,na.rm = TRUE),n = n())
+```
+
+```{r}
+ggplot(flights_DT,aes(x = dep_min,y = avg_arr_delay))+
+  geom_point()+
+  geom_line()
+```
+
+I notice that there seems to be a trend that there will be less average arrival delays centered in the middle and near the end, which is between departing time minutes of 20 and 30, and between departing time minutes of 50 and 60. Maybe flights are more likely to arrive relatively on time if they depart during the middle of an hour or at the end of an hour.

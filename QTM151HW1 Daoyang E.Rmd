@@ -1,0 +1,42 @@
+---
+title: "QTM151HW1"
+author: "Daoyang E"
+date: "2020/1/31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+```
+
+
+1. Make a small random subset ofdiamondsand name it asdsmall.  Use the datasetdsmallfor thefollowing questions.
+```{r}
+dsmall <- diamonds[sample(1:nrow(diamonds), 500, replace=FALSE),]
+```
+
+2. Show the distribution ofcaratwith a histogram, set binwidth to 0.1 and limits for the x-axis from 0to 3;
+```{r}
+qplot(carat, data = dsmall ,geom = "histogram", binwidth = 0.1, xlim = c(0, 3))
+```
+
+3. Show the distribution ofcaratwith a density plot, set the color to the variablecolor.
+```{r}
+qplot(carat, data = dsmall, geom = "density", color = color)
+```
+
+4. Produce a scatterplot showing the relationship betweencaratandprice, set point shape to thevariablecut, set point transparency to 0.1, and describe the trend of the scatterplot.
+```{r}
+qplot(carat, price, data = dsmall, geom = "point", shape = cut, alpha = I(0.1))
+```
+
+We can see that the relationship between carat and price is positive. As diamonds weighs more, the price will accordingly become higher. And the price of cut seems do influence the price of the diamonds, we can see that higher quality cut diamonds have a comparatively higher price compared with fair cut diamonds.
+
+
+5. Make another scatterplot betweencaratandprice, add jitters to points, set point transparency to0.1, applylogtransformation to the x and y axes variables, and add a smooth line to the plot, thendescribe the trend of the scatterplot.
+```{r}
+qplot(carat, price, data = dsmall, geom = c("point", "jitter",  "smooth"), alpha = I(0.1), log = "xy")
+```
+
+We see similar distribution with the previous one, as diamonds weigh more, the price will also increase.

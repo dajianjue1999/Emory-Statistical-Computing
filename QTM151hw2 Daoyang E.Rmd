@@ -1,0 +1,57 @@
+---
+title: "qtm151hw2"
+author: "Daoyang E"
+date: "2020/2/14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(plotly)
+library(gapminder)
+
+```
+
+Q1
+```{r}
+gap2007 <- gapminder %>% filter(year == 2007)%>%arrange(lifeExp)
+gap2007%>%head(1)
+gap2007 %>%tail(1)
+plot_ly(gap2007, x= ~pop, y = ~lifeExp, color = ~continent, type = "scatter", mode = "markers") %>%
+  slice(which.max(lifeExp), which.min(lifeExp))%>%
+  add_annotations(text = c("Japan","Swaziland"))
+```
+
+Q2
+```{r}
+p <- ggplot(gapminder, aes(x= gdpPercap, y = lifeExp, col = continent))+
+  geom_point(aes(size = pop, frame = year, ids=country))+
+  geom_smooth(aes(frame = year,ids = continent), method = "lm", se = F)+
+  scale_x_log10()
+
+ggplotly(p)%>%animation_opts(transition = 100, easing = "linear", mode = "immediate")
+  
+```
+
+Q3
+```{r}
+maxminline <- function(plot){
+  plot %>% group_by(date) %>% 
+  summarise(max = max(median, na.rm = TRUE),
+            min = min(median, na.rm = TRUE)) %>%
+  add_lines(y = ~max, name = "max") %>%
+  add_lines(y = ~min, name = "min")
+}
+```
+
+```{r}
+txhousing %>% group_by(city) %>% plot_ly(x = ~date, y = ~median) %>% 
+  add_lines(name = 'Texan cities', alpha = 0.2)%>% 
+    add_fun(maxminline) %>%
+  add_lines(name = "Houston", data = filter(txhousing, city == "Houston")) %>%
+  add_lines(name = "San Antonio",data = filter(txhousing, city == "San Antonio"))
+
+```
+
+

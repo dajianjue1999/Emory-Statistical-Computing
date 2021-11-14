@@ -1,0 +1,568 @@
+---
+title: Race and Gender Differences in the Relation of Vitamins and Cholesterol to
+  Blood Pressure and Heart Rate
+author: "Group Zoomer"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+  html_document:
+    code_folding: show
+    theme: flatly
+    toc: yes
+---
+
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+need <- c('tidyverse','knitr','Hmisc','SASxport','plotly','ggplot2','stargazer','car','kableExtra','corrplot','car','PerformanceAnalytics','forcats','gridExtra','dplyr','viridis','hrbrthemes','gdata','stringi','stringr','formattable')
+have <- need %in% rownames(installed.packages())
+if(any(!have))install.packages(need[!have])
+invisible(lapply(need,library,character.only=T))
+```
+
+## Introduction
+For this project, we chose three data files from 2015-2016 National Health and Nutrition Examination Survey. Among the four data files collected in the dietary interviews, we selected the first day interviews named Dietary Interview - Individual Foods, First Day (DR1IFF_I) and extracted cholesterol, Vitamin C, Vitamin D, and Vitamin E. Next, we found data from three consecutive blood pressure measurements from the data file called Blood Pressure (BPX_I). We took the average of them to get a reliable result for each observation. And we also found the measurement for heart rate - 60 sec pulse. Furthermore, we downloaded the Demographic Variables and Sample Weights (DEMO_I), which provides us with detailed information on each individual. We used gender, age, and race as covariates that may also influence blood pressure and heart rate.
+
+## Research Question
+In this project, we are interested in understanding how the intakes of vitamins and cholesterol affect blood pressure and heart rate. We hypothesized that Vitamin C, D, E negatively correlate with blood pressure and heart rate. African Americans develop higher blood pressure than other races (American Heart Association, 2016). We also assume that young women tend to have lower blood pressure, but women will likely have higher blood pressure after menopause (Sheps, 2019).
+
+### Related variables and descriptions {.tabset .tabset-fade .tabset-pills}
+
+#### Outcome variables
+
+- Variables were extracted from BPX_I.
+
+Variable | Description
+--------|---------
+BPXPLS | 60 sec pulse (30 sec HR*2)
+BPXSY1 | Systolic: Blood pressure (first reading) mm Hg
+BPXSY2 | Systolic: Blood pressure (second reading) mm Hg
+BPXSY3 | Systolic: Blood pressure (third reading) mm Hg
+BPXDI1 | Diastolic: Blood pressure (first reading) mm Hg
+BPXDI2 | Diastolic: Blood pressure (second reading) mm Hg
+BPXDI3 | Diastolic: Blood pressure (third reading) mm Hg
+
+#### Exposure variables
+
+- Variables were extracted from DR1IFF_I. 
+
+Variable | Description
+--------|---------
+DR1ICHOL | Cholesterol (mg)
+DR1IVC | Vitamin C (mg)
+DR1IVD | Vitamin D (D2+D3) (mcg)
+DR1IATOA | Added alpha-tocopherol (Vitamin E) (mg)
+
+
+#### Covariates
+
+- Covariates were obtained from DEMO_I.
+
+Variable | Description
+--------|---------
+RIAGENDR | Gender of the participant
+RIDAGEYR | Age in years of the participant at the time of screening. Individuals 80 and over are topcoded at 80 years of age.
+RIDRETH3 | Recode of reported race and Hispanic origin information, with Non-Hispanic Asian Category
+
+## Method
+Firstly, we joint three datasets by the sequence number (SEQN), which provides the unique identifier for each participant. **Data Manipulation** section detailed our data cleaning process. Then, we selected all the variables mentioned above and computed summary statistics for all the continuous variables. Thereafter, we understood the gender and racial differences of all the variables by using `forcats`. Finally, we visualized the correlations between exposures and outcomes grouped by covariates and reported our findings.
+
+### Data Manipulation
+```{r}
+#0.import all data from local files
+a <- read.xport("BPX_I.XPT")
+b <- read.xport("DR1IFF_I.XPT")
+c <- read.xport("DEMO_I.XPT")
+#1.select the variables that we need
+a1 <- select(a, SEQN, BPXPLS, BPXSY1, BPXSY2, BPXSY3, BPXDI1, BPXDI2, BPXDI3)
+b1 <- select(b, SEQN, DR1ICHOL, DR1IVC, DR1IVD, DR1IATOA)
+c1 <- select(c, SEQN, RIAGENDR, RIDAGEYR, RIDRETH3)
+#2.join them together
+data <- left_join(a1, b1, by = "SEQN")
+data <- left_join(data, c1, by = "SEQN")
+data <- drop_na(data)
+#3.change the column names
+data <- data %>% rename("pulse_60s"="BPXPLS" , # 60 sec pulse
+                "cholesterol" = "DR1ICHOL", # cholesterol
+               "VC" ="DR1IVC",
+               "VD" ="DR1IVD", 
+               "ATOA" = "DR1IATOA", # Added alpha-tocopherol (Vitamin E)
+               "age" ="RIDAGEYR")
+#4.make categorical variables easier to understand
+data <- mutate(data, gender = ifelse(RIAGENDR == 1, "male", 
+                                     ifelse(RIAGENDR == 2, "female", "missing")), 
+                     race = ifelse(RIDRETH3 == 1, "Mexican American", 
+                                   ifelse(RIDRETH3 == 2, "Other Hispanic", 
+                                          ifelse(RIDRETH3 == 3, "Non-Hispanic White",
+                                                 ifelse(RIDRETH3 == 4, "Non-Hispanic Black", 
+                                                        ifelse(RIDRETH3 == 6, "Non-Hispanic Asian", 
+                                                                ifelse(RIDRETH3 == 7, "Other Race", "Missing")))))))
+                                                       
+#5.calculate the average blood pressure
+data <- mutate(data, avg_bp_sy = round((BPXSY1 + BPXSY2 + BPXSY3)/3, 2), 
+                     avg_bp_di = round((BPXDI1 + BPXDI2 + BPXDI3)/3, 2))
+#6.final cleaned data
+data <- select(data, 
+               SEQN, 
+               pulse_60s, 
+               avg_bp_sy, 
+               avg_bp_di, 
+               cholesterol, 
+               VC, 
+               VD, 
+               ATOA, 
+               gender, 
+               age, 
+               race)%>%
+  drop_na()
+data$race<-data$race%>%as.character()
+data$gender<-data$gender%>%as.character()
+data[c(1:8,10)]<- lapply(data[c(1:8,10)],as.numeric)
+```
+
+## Result
+
+### Descriptive Statistics {.tabset .tabset-fade .tabset-pills}
+
+```{r results="asis", fig.width=10}
+# Summary Stats of Continuous Variables
+table1<- stargazer(data[,-1],type="html",align=TRUE,digits=1,
+          title="Summary Stats of Continuous Variables",
+          covariate.labels = c("60 Sec Pulse","Avg Systolic BP","Avg Diastolic BP","Cholesterol(mg)","Vitamin C(mg)","Vitamin D(mcg)","Vitamin E(mg)","Age"),
+          style = "qje",
+          out="summarystats.html")
+```
+
+<br>
+
+**Intepretation**
+In our dataset, we have 93,629 total observations with an average age of 41.4 years old. Most of the observations consume zero Vitamin E. On average, the population consumes 19.3 mg Vitamin C and 1.3 mcg Vitamin D. The standard deviation of the cholesterol intakes is the biggest. The average systolic blood pressure is 120 mm Hg, and the average diastolic blood pressure is 66 mm Hg.
+
+<br>
+
+#### Understanding race
+
+```{r race, fig.height=10, fig.width=10, message=FALSE}
+# recode race
+data1 <- data%>%
+  drop_na(pulse_60s)%>%
+  mutate(racenew=fct_recode(race,
+                             "Black" = "Non-Hispanic Black",
+                             "Asian" = "Non-Hispanic Asian",
+                             "White" = "Non-Hispanic White",
+                             "Mexican American" = "Mexican American",
+                             "Hispanic, other" = "Other Hispanic",
+                             "Other" = "Other Race"))
+
+theme <- theme_classic()+theme(axis.title.y = element_blank())
+
+#race count
+r1 <- data1%>%
+  mutate(racenew = racenew%>%fct_infreq()%>%fct_rev())%>%
+  ggplot(aes(racenew))+
+  geom_bar()+
+  theme+
+  theme(axis.text.x = element_text(size=10, angle=10),
+        axis.title.x = element_blank())
+#average pulse by race
+r2 <- data1%>%
+  group_by(racenew)%>%
+  summarise(avgpulse=mean(pulse_60s))%>%
+  ggplot(aes(x=avgpulse,y=fct_reorder(racenew,avgpulse)))+
+  geom_point()+
+  geom_text(aes(label= round(avgpulse,1)),
+            size=3.5,vjust=0,nudge_y=-0.5)+
+  xlab("60 sec Pulse")+
+  theme
+ #average systolic blood pressure by race
+ r3 <- data1%>%
+  group_by(racenew)%>%
+  summarise(avg_bp_sy=mean(avg_bp_sy))%>%
+  ggplot(aes(x=avg_bp_sy,y=fct_reorder(racenew,avg_bp_sy)))+
+  geom_point()+
+  geom_text(aes(label= round(avg_bp_sy,1)),
+            size=3.5,vjust=0,nudge_y=-0.5)+
+  xlab("Avg Systolic BP (mm Hg)")+
+  theme
+ #average diastolic blood pressure by race
+r4 <- data1%>%
+  group_by(racenew)%>%
+  summarise(avg_bp_di=mean(avg_bp_di))%>%
+  ggplot(aes(x=avg_bp_di,y=fct_reorder(racenew,avg_bp_di)))+
+  geom_point()+
+  geom_text(aes(label= round(avg_bp_di,1)),
+            size=3.5,vjust=0,nudge_y=-0.5)+
+  xlab("Avg Diastolic BP (mm Hg)")+
+  theme
+#average VC by race
+r5 <- data1%>%
+  group_by(racenew)%>%
+  summarise(avg_vc=mean(VC))%>%
+  ggplot(aes(x=avg_vc,y=fct_reorder(racenew,avg_vc)))+
+  geom_point()+
+  geom_text(aes(label= round(avg_vc,1)),
+            size=3.5,vjust=0,nudge_y=-0.5)+
+  xlab("Vitamin C (mg)")+
+  theme
+#average VD by race
+r6 <- data1%>%
+  group_by(racenew)%>%
+  summarise(avg_vd=mean(VD))%>%
+  ggplot(aes(x=avg_vd,y=fct_reorder(racenew,avg_vd)))+
+  geom_point()+
+  geom_text(aes(label= round(avg_vd,1)),
+            size=3.5,vjust=0,nudge_y=-0.5)+
+  xlab("Vitamin D (mcg)")+
+  theme
+#average VE by race
+r7 <- data1%>%
+  group_by(racenew)%>%
+  summarise(avg_ve=mean(ATOA))%>%
+  ggplot(aes(x=avg_ve,y=fct_reorder(racenew,avg_ve)))+
+  geom_point()+
+  geom_text(aes(label= round(avg_ve,1)),
+            size=3.5,vjust=0,nudge_y=-0.5)+
+  xlab("Vitamin E (mg)")+
+  theme
+#average cholesterol by race
+r8 <- data1%>%
+  group_by(racenew)%>%
+  summarise(avg_cholesterol=mean(cholesterol))%>%
+  ggplot(aes(x=avg_cholesterol,y=fct_reorder(racenew,avg_cholesterol)))+
+  geom_point()+
+  geom_text(aes(label= round(avg_cholesterol,1)),
+            size=3.5,vjust=0,nudge_y=-0.5)+
+  xlab("Cholesterol (mg)")+
+  theme
+
+grid1 <- grid.arrange(r1,r2,r3,r4,r5,r6,r7,r8,ncol=2)
+```
+
+<br>
+
+**Intepretation**
+The Black population has the lowest average heart rate but the highest average blood pressure among all races. While the Asian population has the lowest average systolic blood pressure, it has the highest diastolic blood pressure. The White population consumes the lowest amount of Vitamin C but consumes the highest amount of Vitamin E. Mexican Americans have the highest cholesterol intakes. Other Hispanics have the lowest average diastolic blood pressure. All the races except White consume zero Vitamin E on average.
+
+<br>
+
+#### Understanding gender
+
+```{r gender}
+#summarise statistics by gender
+data2 <- data%>%
+  select(-c(SEQN,race))%>%
+  group_by(gender)%>%
+  summarise(`60 sec Pulse`=round(mean(pulse_60s),1),
+            `Systolic BP (mm Hg)`=round(mean(avg_bp_sy),1),
+            `Diastolic BP (mm Hg)`=round(mean(avg_bp_di),1),
+            `Cholesterol (mg)`=round(mean(cholesterol),1),
+            `Vitamin C (mg)`=round(mean(VC),1),
+            `Vitamin D (mcg)`=round(mean(VD),1),
+            `Vitamin E (mg)`=round(mean(ATOA),1),
+             Age=round(mean(age),1),
+            `Totol obs`=n())%>%
+  gather(`Average stats`,values,-gender)%>%
+  spread(gender,values)
+
+#rearrange variables
+data2 <- data2%>%
+  arrange(match(`Average stats`,c("60 sec Pulse","Systolic BP (mm Hg)","Diastolic BP (mm Hg)","Cholesterol (mg)","Vitamin C (mg)","Vitamin D (mcg)","Vitamin E (mg)","Age","Totol obs")))
+
+#display summary statistics table by gender 
+table2 <- kable(data2) %>%
+  kable_styling(bootstrap_options = "hover")
+table2
+```
+
+<br>
+
+**Intepretation**
+Observations in female are about 4000 more than observations in male. The average age and the intakes of Vitamin E between female and male are the same. On average, female has higher heart rate than male. However, male has higher blood pressure and more Vitamin C, Vitamin D, and cholesterol intakes than female.
+
+<br>
+
+### Data visualization {.tabset .tabset-fade .tabset-pills}
+
+#### Gender and race differences in high blood pressure
+According to the World Health Organizaton ([WHO](https://www.who.int/news-room/fact-sheets/detail/hypertension)), normal adult blood pressure is defined as a blood pressure of 120 mm Hg when the heart beats (systolic) and a blood pressure of 80 mm Hg when the heart relaxes (diastolic). When systolic blood pressure is equal to or above **140 mm Hg** and/or a diastolic blood pressure equal to or above **90 mm Hg** the blood pressure is considered to be high.
+
+```{r hypertension}
+hypertension <- data %>%
+  filter(age>18)%>% # normal adult
+  select(c(SEQN,avg_bp_sy,avg_bp_di,gender,race,age))%>%
+  group_by(SEQN,gender,race,age)%>%
+  summarise(each_bp_sy=mean(avg_bp_sy),each_bp_di=mean(avg_bp_di))
+
+#total hypertension proportion
+hypertotal<-hypertension%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_total<-round(nrow(hypertotal)/nrow(hypertension),3)
+
+#white hypertension proportion
+white <- hypertension%>%
+  filter(race=="Non-Hispanic White")
+hyperwhite<-hypertension%>%
+  filter(race=="Non-Hispanic White")%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_white<-round(nrow(hyperwhite)/nrow(white),3)
+
+#black hypertension proportion
+black <- hypertension%>%
+  filter(race%in%"Non-Hispanic Black")
+hyperblack<-hypertension%>%
+  filter(race=="Non-Hispanic Black")%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_black<-round(nrow(hyperblack)/nrow(black),3)
+
+#Asian hypertension proportion
+asian <- hypertension%>%
+  filter(race=="Non-Hispanic Asian")
+hyperasian <- hypertension%>%
+  filter(race=="Non-Hispanic Asian")%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_asian<-round(nrow(hyperasian)/nrow(asian),3)
+
+#Mexican American hypertension proportion
+mex <- hypertension%>%
+  filter(race=="Mexican American")
+hypermex <- hypertension%>%
+  filter(race=="Mexican American")%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_mex<-round(nrow(hypermex)/nrow(mex),3)
+
+#Other Hispanic hypertension proportion
+oh <- hypertension%>%
+  filter(race=="Other Hispanic")
+hyperoh <- hypertension%>%
+  filter(race=="Other Hispanic")%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_oh<-round(nrow(hyperoh)/nrow(oh),3)
+
+#Other Race hypertension proportion
+or<-hypertension%>%
+  filter(race=="Other Race")
+hyperor<-hypertension%>%
+  filter(race=="Other Race")%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_or<-round(nrow(hyperor)/nrow(or),3)
+
+#Female hypertension proportion
+f <- hypertension%>%
+  filter(gender=="female")
+hyperf<-hypertension%>%
+  filter(gender=="female")%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_f<-round(nrow(hyperf)/nrow(f),3)
+
+#Male hypertension proportion
+m <- hypertension%>%
+  filter(gender=="male")
+hyperm<-hypertension%>%
+  filter(gender=="male")%>%
+  filter(each_bp_sy>140 | each_bp_di>90)
+prop_m<-round(nrow(hyperm)/nrow(m),3)
+
+hyperprop<-data.frame(prop_total,prop_white,prop_black,prop_asian,prop_mex,prop_oh,prop_or,prop_f,prop_m)
+hyperprop<-hyperprop%>%
+  gather(1:9,key="proportion",value="values")
+
+p1 <- hyperprop %>%
+  ggplot(aes(x=values,y=fct_reorder(proportion,values) %>% 
+               fct_relevel("prop_total", after=0)))+
+  geom_point()+
+  geom_vline(xintercept=prop_total,color="red")+
+  geom_text(aes(label=percent(values)),
+            size=3.5,vjust=0,nudge_y=-0.5)+
+  scale_y_discrete(labels=c("prop_total"="Total","prop_asian"="Asian","prop_mex"="Mexican American","prop_white"="White","prop_oh"="Hispanic, other","prop_or"="Other","prop_f"="Female","prop_m"="Male","prop_black"="Black"))+
+  labs(title="Rates of High Blood Pressure by Gender and Race",
+       y=" ",
+       x="Percentage of people with high blood pressure")+
+  scale_x_continuous(labels = scales::percent,
+                     breaks = seq(0.15,0.28,0.02))+
+  annotate("text", label="Percent of total obs",x=0.19,y=9,size=3.5,color="red")+
+  theme_classic()
+p1
+```
+
+<br>
+
+**Intepretation**
+
+- A greater percent of men (18.4%) have high blood pressure than women (16.8%).
+
+- High blood pressure is more common in non-Hispanic black adults (22.9%) than in other Hispanic adults (17.5%), non-Hispanic white adults (16.7%), other race adults (16.7%), Mexican American adults (16.1%), or non-Hispanic Asian adults (12.8%).
+
+<br>
+
+#### Gender and race differences between cholesterol and heart rate
+
+```{r cholesterol and pulse}
+#plot the relation between cholesterol and pulse by race and gender
+cho_pulse <- data%>%
+  select(c(SEQN,pulse_60s,cholesterol,age,race,gender))%>%
+  group_by(SEQN,age,gender,race)%>%
+ summarise(avg_pulse=mean(pulse_60s,na.rm = T),avg_cho=mean(cholesterol,na.rm=T))
+
+p2t <- cho_pulse%>%
+  ggplot(aes(x=avg_cho,y=avg_pulse))+
+  geom_point(aes(frame=age,ids=SEQN))+
+  geom_smooth(aes(frame=age),method="lm",se=F)+
+  scale_x_log10()+
+  labs(title="Relation between Cholesterol and Heart Rate over Age",
+       x="Cholesterol (mg)",
+       y="60 sec pulse")+
+  theme_classic()
+
+p2f <- cho_pulse%>%
+  filter(gender=="female")%>%
+  ggplot(aes(x=avg_cho,y=avg_pulse,color=race))+
+  geom_point(aes(frame=age,ids=SEQN))+
+  geom_smooth(aes(frame=age,ids=race),method="lm",se=F)+
+  scale_x_log10()+
+  labs(title="Relation between Cholesterol and Heart Rate in Female by Race",
+       x="Cholesterol (mg)",
+       y="60 sec pulse")+
+  theme_classic()
+
+p2m <- cho_pulse%>%
+  filter(gender=="male")%>%
+  ggplot(aes(x=avg_cho,y=avg_pulse,color=race))+
+  geom_point(aes(frame=age,ids=SEQN))+
+  geom_smooth(aes(frame=age,ids=race),method="lm",se=F)+
+  scale_x_log10()+
+  labs(title="Relation between Cholesterol and Heart Rate in Male by Race",
+       x="Cholesterol (mg)",
+       y="60 sec pulse")+
+  theme_classic()
+
+p2t <- ggplotly(p2t)
+p2m <- ggplotly(p2m)
+p2f <- ggplotly(p2f)
+
+p2t
+p2m
+p2f
+```
+
+<br>
+
+**Intepretation**
+We first examined the relation between cholesterol intake and heart rate. However, we didn't find any meaningful associations. After we looked into variations among gender and race, the results are mixed as shown in the plot. This may be due to small sample size in each subgroup after we grouped all the observations by gender, race, and age.
+
+<br>
+
+#### Gender and race differences between Vitamin C and heart rate
+
+```{r vc and blood pressure}
+#plot the relation between vc and pulse by race
+options(scipen = 100, digits = 2)
+vc_bp <- data%>%
+  select(c(SEQN,avg_bp_sy,VC,age,race))%>%
+  group_by(SEQN,age,race)%>%
+ summarise(avg_bp_sy=mean(avg_bp_sy,na.rm = T),avg_vc=mean(VC,na.rm=T))
+
+p3 <- vc_bp %>%
+  ggplot(aes(x=avg_vc, y=avg_bp_sy, color = race)) +
+  geom_point(aes(frame = age, ids = SEQN))+
+  geom_smooth(aes(frame = age,ids = race),method ="lm",se = F)+
+  scale_x_log10()+
+  labs(title="Relation between Vitamin C and Blood Pressure by Race over Age",
+       x="Vitamin C (mg)",
+       y="Systolic Blood Pressure (mm Hg)")+
+  theme_classic()
+
+p3 <- ggplotly(p3)
+
+p3
+```
+
+<br>
+
+**Intepretation**
+The role that vitamins may play is also less clear than what we thought. Although we hypothesized that vitamin deficiency may be linked to an increased risk of high blood pressure, none of the vitamins indicates significant relations. Therefore, we decided to only report Vitamin C here for an illustration.
+
+<br>
+
+#### Gender differences between age and blood pressure
+
+Women who have reached menopause may have higher blood pressure than before. The average age of U.S. women at the time of menopause is 51 years. To understand the correlation between menopause and women's risk of high blood pressure, we cut age by 51. The following graphs also compared women with men to tease out the change of blood pressure due to aging.
+
+<br>
+
+```{r female age and blood pressure}
+bpdata <- data%>%
+  select(c(SEQN,avg_bp_di,avg_bp_sy,age,race,gender))%>%
+  group_by(SEQN,age,gender,race)%>%
+  summarise(avg_bp_di=mean(avg_bp_di,na.rm = T),avg_bp_sy=mean(avg_bp_sy,na.rm=T))
+#define cut points for the rank
+cutpts <- c(0,51,80)
+#create factor variable containing ranges for the rank
+bpdata$age <- cut(bpdata$age, cutpts)
+
+#plot Average Diastolic Blood Pressure (mm Hg) by Age and Gender
+p4d <- plot_ly()%>%
+  add_trace(data = bpdata, x=~gender, y=~avg_bp_di, color=~age,
+            type="violin", box=list(visible=T),points=T, alpha=0.5) %>%
+  add_boxplot(data = bpdata, x=~gender, y=~avg_bp_di, color=~age, alpha=0.2) %>%
+  layout(violinmode="group", boxmode="group",
+         title="Average Diastolic Blood Pressure (mm Hg) by Age and Gender",
+         xaxis=list(title="Gender"),
+         yaxis=list(title="Average Diastolic Blood Pressure (mm Hg)"))
+  
+#plot Average Systolic Blood Pressure (mm Hg) by Age and Gender 
+p4s <- plot_ly()%>%
+  add_trace(data = bpdata, x=~gender, y=~avg_bp_sy, color=~age,
+            type="violin", box=list(visible=T),points=T, alpha=0.5) %>%
+  add_boxplot(data = bpdata, x=~gender, y=~avg_bp_sy, color=~age, alpha=0.2) %>%
+  layout(violinmode="group", boxmode="group",
+         title="Average Syastolic Blood Pressure (mm Hg) by Age and Gender",
+         xaxis=list(title="Gender"),
+         yaxis=list(title="Average Syastolic Blood Pressure (mm Hg)"))
+
+p4d
+p4s
+```
+
+<br>
+
+**Intepretation**
+Results indicate that age is more strongly associated with blood pressure than menopause because women and men in each age group have comparatively similar blood pressure readings. This may imply that the increase in blood pressure for women due to menopause may be temporary, while aging has a significant influence on high blood pressure.
+
+<br>
+
+## Conclusion
+In summary, the intakes of vitamins and cholesterol do not significantly affect heart rate and blood pressure. However, differences in the consumption of vitamins among all races are evident. The Black population has the lowest average heart rate but the highest average blood pressure. Although Asians have the lowest average systolic blood pressure, they have the highest diastolic blood pressure. The White population consumes the lowest amount of Vitamin C but consumes the highest amount of Vitamin E. Mexican Americans consume most cholesterol. Other Hispanics have the lowest average diastolic blood pressure. All the races except White consume zero Vitamin E on average. High blood pressure more commonly occurs among the black population than other races. Apart from theories such as high rates of obesity and diabetes among African Americans, the claim that African Americans may be more sensitive to salt in their genes is also supported by some researchers. They found that one gram of salt could raise blood pressure as high as 5 mm Hg (American Heart Associaton, 2016).
+
+Moreover, there are some slight differences between female and male. On average, female has higher heart rate than male. Such differences may be due to the influence of our sex hormones, body size, and heart size. However, male has higher blood pressure and more Vitamin C, Vitamin D, and cholesterol intakes than female. Some risk factors such as excess weight and unhealthy diet may contribute to these findings. For female, menopause does not seem to be strongly associated with high blood pressure. For both female and male, age is a powerful determinant of blood pressure. Therefore, as we age, it is important for us to maintain a healthy lifestyle.
+
+
+## References
+High Blood Pressure and African Americans. (American Heart Association). Retrieved from https://www.heart.org/en/health-topics/high-blood-pressure/why-high-blood-pressure-is-a-silent-killer/high-blood-pressure-and-african-americans
+
+Hypertension. (World Health Organization). Retrieved from https://www.who.int/news-room/fact-sheets/detail/hypertension 
+
+NHANES 2015-2016: Data Documentation, Codebook, and Frequencies Demographic Variables and Sample Weights (DEMO_I). Retrieved from https://wwwn.cdc.gov/Nchs/Nhanes/2015-2016/DEMO_I.htm
+
+NHANES 2015-2016: Data Documentation, Codebook, and Frequencies Dietary Interview - Individual Foods, First Day (DR1IFF_I). Retrieved from https://wwwn.cdc.gov/Nchs/Nhanes/2015-2016/DR1IFF_I.htm#Data_Processing_and_Editing
+
+NHANES 2015-2016: Blood Pressure Data Documentation, Codebook, and Frequencies. Retrieved from https://wwwn.cdc.gov/Nchs/Nhanes/2015-2016/BPX_I.htm#BPXPLS
+
+Sheps, S. Menopause and high blood pressure: What's the connection?. Retrieved from https://www.mayoclinic.org/diseases-conditions/high-blood-pressure/expert-answers/menopause-and-high-blood-pressure/faq-20058406
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

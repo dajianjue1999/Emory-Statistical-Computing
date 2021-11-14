@@ -1,0 +1,64 @@
+---
+title: "Qtm151 hw5"
+author: "Daoyang E"
+date: "2020/3/7"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(babynames)
+library(ggplot2)
+library(plotly)
+```
+
+```{r}
+(newbaby <- babynames%>%group_by(sex, year)%>%summarise(number = sum(n)))
+```
+
+```{r}
+(newbaby2 <- spread(newbaby, key = sex, value = number))
+```
+
+```{r}
+(newbaby3 <- newbaby2 %>% mutate(percent = F/(F + M)))
+```
+
+```{r}
+ggplot(newbaby3, aes(x = year, y = percent))+
+  geom_point()
+```
+
+
+```{r}
+names(who) <- stringr::str_replace(names(who), "newrel", "new_rel")
+who
+```
+
+```{r}
+(newwho <- who %>% gather("new_sp_m014":"new_rel_f65", key = "codes", value = "n",)%>% select("country", "year", "codes", "n"))
+```
+
+```{r}
+(newwho1 <- separate(newwho, codes, into = c("new", "type", "sexage"),sep = "_"))
+```
+
+```{r}
+(newwho2 <- separate(newwho1, sexage, into = c("sex", "age"),sep = 1))
+```
+
+```{r}
+(newwho3 <- newwho2 %>% group_by(country, year, sex) %>% summarise(totalcaseTB = sum(n,na.rm = T)))
+```
+
+```{r}
+(newwho4 <- newwho3 %>% filter(country%in% c("Afghanistan","Albania", "Algeria")))
+```
+
+```{r}
+ggplot(newwho4, aes(x = year, y = totalcaseTB))+
+  geom_line()+
+  facet_grid(country ~ sex)
+```
+

@@ -1,0 +1,51 @@
+---
+title: "QTM151HW4"
+author: "Daoyang E"
+date: "2020/2/29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(nycflights13)
+library(tidyverse)
+```
+
+
+1(a)
+```{r}
+newdata <- flights %>% filter(!is.na(dep_delay), !is.na(arr_delay)) 
+
+newdata %>% arrange(arr_delay)%>% head(1) %>% select(tailnum, arr_delay)
+```
+
+```{r}
+newdata %>% group_by(dest) %>% summarise(distinctcar = n_distinct(carrier)) %>% ungroup() %>% top_n(1,distinctcar)
+```
+
+1(b)
+```{r}
+flights %>%
+ semi_join(airports, by=c("dest"="faa")) %>%
+summarise(total=n_distinct(dest))
+```
+
+(2)
+```{r}
+flights %>% 
+anti_join(airports, by=c("dest"="faa")) %>% 
+  summarise(total=n_distinct(dest))
+```
+
+(3)
+```{r}
+flights %>% 
+semi_join(airports, by=c("dest"="faa")) %>% group_by(dest) %>% summarise(averagearrd = mean(arr_delay,na.rm = T)) %>% arrange(desc(averagearrd))
+```
+
+(4)
+```{r}
+flights %>% 
+full_join(airlines) %>% group_by(name) %>% summarise(averagearrd = mean(arr_delay,na.rm = T)) %>% ungroup() %>% top_n(1, averagearrd)
+```
+
